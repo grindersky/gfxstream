@@ -172,30 +172,13 @@ EmulatedPhysicalDeviceMemoryProperties::EmulatedPhysicalDeviceMemoryProperties(
         }
     }
 
-    // Only replace the memory type when gfxstream allocates host visible memory itself and maps
-    // it with vkMapMemory(). With these features, host visible memory is exported or is host
-    // memory that gfxstream imports, and it keeps its memory type.
-    const bool hostVisibleMemoryIsExportedOrImported =
-        features.ExternalBlob.enabled() || features.SystemBlob.enabled() ||
-        features.VulkanAllocateHostVisibleAsUdmabuf.enabled() ||
-        features.VulkanAllocateHostMemory.enabled();
-    bool allocateUncachedHostVisibleAsCached = false;
-    if (features.VulkanAllocateUncachedHostVisibleAsCached.enabled()) {
-        if (hostVisibleMemoryIsExportedOrImported) {
-            // This is built again for every vkEnumeratePhysicalDevices(), so warn only once.
-            static std::once_flag sWarnOnce;
-            std::call_once(sWarnOnce, [] {
-                GFXSTREAM_WARNING(
-                    "VulkanAllocateUncachedHostVisibleAsCached has no effect with ExternalBlob, "
-                    "SystemBlob, VulkanAllocateHostVisibleAsUdmabuf or VulkanAllocateHostMemory.");
-            });
-        } else {
-            allocateUncachedHostVisibleAsCached = true;
-        }
-    }
+    // The guest maps host visible memory and snapshots read it back through the CPU, so uncached
+    // types use their cached sibling whether gfxstream maps, exports or imports the memory.
+    const bool allocateUncachedHostVisibleAsCached = true;
+
 
     for (uint32_t i = 0; i < mGuestMemoryProperties.memoryTypeCount; i++) {
-        // A replaced guest memory type keeps the flags of the original host memory type, and
+    // A replaced guest memory type keeps the flags of the original host memory type, and
         // transformToGuestMemoryRequirements() only offers it for resources that allow the
         // replacement.
         const uint32_t hostMemoryTypeIndex =
@@ -203,10 +186,10 @@ EmulatedPhysicalDeviceMemoryProperties::EmulatedPhysicalDeviceMemoryProperties(
                 ? FindReplacementCachedHostMemoryTypeIndex(mHostMemoryProperties, i)
                 : i;
         mGuestMemoryTypes.push_back(EmulatedGuestMemoryType{
-            .hostMemoryTypeIndex = hostMemoryTypeIndex,
-            .memoryType = mGuestMemoryProperties.memoryTypes[i],
-        });
-    }
+    .hostMemoryTypeIndex = hostMemoryTypeIndex,
+    .memoryType = mGuestMemoryProperties.memoryTypes[i],
+});
+}
 
 #if defined(__APPLE__)
     const std::optional<uint32_t> hostDeviceLocalIndex =
