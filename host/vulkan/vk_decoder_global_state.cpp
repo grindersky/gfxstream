@@ -7508,10 +7508,15 @@ class VkDecoderGlobalState::Impl {
 
                 if (m_vkEmulation->getFeatures().VulkanAllocateHostVisibleAsUdmabuf.enabled()) {
                     // 0755 = user read write
-                    int ret = memory.createNoMapping(0755);
+                    // The snapshot saves host visible memory through a host mapping.
+                    int ret = snapshotsEnabled() ? memory.create(0755)
+                                                 : memory.createNoMapping(0755);
                     if (ret) {
                         GFXSTREAM_ERROR("Failed to create shared memory, error: %d", ret);
                         return VK_ERROR_OUT_OF_HOST_MEMORY;
+                    }
+                    if (snapshotsEnabled()) {
+                        mappedPtr = memory.get();
                     }
 
                     auto creator = m_vkEmulation->getUdmabufCreator();
