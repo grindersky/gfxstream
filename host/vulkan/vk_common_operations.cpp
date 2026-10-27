@@ -1739,12 +1739,48 @@ void VkEmulation::initFeatures(Features features) {
         mRepresentativeColorBufferMemoryTypeInfo.hostMemoryTypeIndex,
         mRepresentativeColorBufferMemoryTypeInfo.guestMemoryTypeIndex);
 
+    // udmabuf needs dma-buf import and /dev/udmabuf. Without dma-buf import, SystemBlob shares
+    // the same memfds through host pointer import; RADV refuses memfd pointers but has dma-buf.
+    const char* deviceName = mDeviceInfo.physdevProps.deviceName;
+    std::string fallbackReason;
     if (mFeatures.VulkanAllocateHostVisibleAsUdmabuf.enabled()) {
-        mUdmabufCreator = std::make_unique<UdmabufCreator>();
-        if (!mUdmabufCreator->init()) {
-            mUdmabufCreator = nullptr;
-            GFXSTREAM_FATAL("udmabuf failed to initialize");
+        if (mDeviceInfo.supportsDmaBuf) {
+            mUdmabufCreator = std::make_unique<UdmabufCreator>();
+            if (!mUdmabufCreator->init()) {
+                mUdmabufCreator = nullptr;
+                mFeatures.VulkanAllocateHostVisibleAsUdmabuf.setEnabled(false);
+                fallbackReason = "udmabuf requested, but /dev/udmabuf cannot be opened";
+            }
+        } else if (mDeviceInfo.supportsExternalMemoryHostProps) {
+            mFeatures.VulkanAllocateHostVisibleAsUdmabuf.setEnabled(false);
+            mFeatures.SystemBlob.setEnabled(true);
+            fallbackReason = "udmabuf requested, but the device cannot import dma-bufs";
+        } else {
+            mFeatures.VulkanAllocateHostVisibleAsUdmabuf.setEnabled(false);
+            fallbackReason =
+                "udmabuf requested, but the device imports neither dma-bufs nor host pointers";
         }
+    }
+
+    const char* mode;
+    if (!mFeatures.GlDirectMem.enabled() && !mFeatures.VirtioGpuNext.enabled()) {
+        mode = "copy";
+    } else if (mFeatures.VulkanAllocateHostVisibleAsUdmabuf.enabled()) {
+        mode = "udmabuf";
+    } else if (mFeatures.SystemBlob.enabled()) {
+        mode = "SystemBlob";
+    } else if (mFeatures.ExternalBlob.enabled() && mDeviceInfo.supportsDmaBuf) {
+        mode = "dma-buf export";
+    } else if (mFeatures.ExternalBlob.enabled()) {
+        mode = "opaque fd export, guests map it through the host driver";
+    } else {
+        mode = "host mapping";
+    }
+    if (fallbackReason.empty()) {
+        GFXSTREAM_INFO("Host visible memory mode: %s (%s)", mode, deviceName);
+    } else {
+        GFXSTREAM_WARNING("Host visible memory mode: %s (%s; %s)", mode, deviceName,
+                          fallbackReason.c_str());
     }
 }
 
