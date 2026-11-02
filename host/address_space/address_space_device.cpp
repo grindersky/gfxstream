@@ -147,8 +147,7 @@ class AddressSpaceDeviceState {
         return contextDesc.device_context.get();
     }
 
-    void save(Stream* stream) const {
-        // Pre-save
+    void preSave() const {
         for (const auto &kv : mContexts) {
             const AddressSpaceContextDescription &desc = kv.second;
             const AddressSpaceDeviceContext *device_context = desc.device_context.get();
@@ -158,6 +157,9 @@ class AddressSpaceDeviceState {
         }
 
         AddressSpaceGraphicsContext::globalStatePreSave();
+    }
+
+    void save(Stream* stream) const {
         AddressSpaceGraphicsContext::globalStateSave(stream);
 
         stream->putBe32(mHandleIndex);
@@ -179,9 +181,9 @@ class AddressSpaceDeviceState {
                 stream->putByte(0);
             }
         }
+    }
 
-        // Post save
-
+    void postSave() const {
         AddressSpaceGraphicsContext::globalStatePostSave();
 
         for (const auto &kv : mContexts) {
@@ -451,10 +453,14 @@ int gfxstream_address_space_set_load_resources(AddressSpaceDeviceLoadResources r
     return 0;
 }
 
+void gfxstream_address_space_pre_save() { sAddressSpaceDeviceState()->preSave(); }
+
 int gfxstream_address_space_save_memory_state(gfxstream::Stream *stream) {
     sAddressSpaceDeviceState()->save(stream);
     return 0;
 }
+
+void gfxstream_address_space_post_save() { sAddressSpaceDeviceState()->postSave(); }
 
 int gfxstream_address_space_load_memory_state(gfxstream::Stream *stream) {
     return sAddressSpaceDeviceState()->load(stream) ? 0 : 1;

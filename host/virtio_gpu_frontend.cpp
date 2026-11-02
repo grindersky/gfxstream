@@ -1144,22 +1144,28 @@ int VirtioGpuFrontend::snapshot(const char* directory) {
         return -EINVAL;
     }
     mRenderer->pauseAllPreSave();
+    // ASG consumers stop before any renderer state, sequence numbers included, is saved.
+    gfxstream_address_space_pre_save();
 
     int ret = snapshotRenderer(directory);
     if (ret) {
         GFXSTREAM_ERROR("Failed to save snapshot: failed to snapshot renderer.");
-        return ret;
+    }
+    if (!ret) {
+        ret = snapshotFrontend(directory);
+        if (ret) {
+            GFXSTREAM_ERROR("Failed to save snapshot: failed to snapshot frontend.");
+        }
+    }
+    if (!ret) {
+        ret = snapshotAsg(directory);
+        if (ret) {
+            GFXSTREAM_ERROR("Failed to save snapshot: failed to snapshot ASG device.");
+        }
     }
 
-    ret = snapshotFrontend(directory);
+    gfxstream_address_space_post_save();
     if (ret) {
-        GFXSTREAM_ERROR("Failed to save snapshot: failed to snapshot frontend.");
-        return ret;
-    }
-
-    ret = snapshotAsg(directory);
-    if (ret) {
-        GFXSTREAM_ERROR("Failed to save snapshot: failed to snapshot ASG device.");
         return ret;
     }
 
