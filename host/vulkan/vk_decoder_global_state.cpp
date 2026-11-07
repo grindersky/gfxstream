@@ -579,11 +579,9 @@ class VkDecoderGlobalState::Impl {
             // get() alone isn't enough: clearing the handles before the load bumps every
             // slot's generation, so a destroyed handle can match a slot the load never
             // filled, which still holds an object of the device the load destroyed.
-            // Only objects this load created are in the reverse map.
             auto destroyed = std::find_if(handles.begin(), handles.end(), [](uint64_t handle) {
-                const BoxedHandleInfo* info = sBoxedHandleManager.get(handle);
-                return !info || !info->underlying ||
-                       sBoxedHandleManager.getBoxedFromUnboxed(info->underlying) != handle;
+                return !sBoxedHandleManager.get(handle) ||
+                       !sBoxedHandleManager.createdSinceClear(handle);
             });
             if (destroyed != handles.end()) {
                 GFXSTREAM_ERROR(
